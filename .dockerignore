@@ -1,2 +1,12 @@
 node_modules
 .git
+Makefile
+manifests
+dist
+Dockerfile
+*.md
+.vscode
+.DS_Store
+.*ignore
+.prettierrc
+.eslintrc.js

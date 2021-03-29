@@ -1,0 +1,101 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: dopplersecrets.doppler.com
+spec:
+  group: doppler.com
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                serviceToken:
+                  type: string
+                secretName:
+                  type: string
+  scope: Namespaced
+  names:
+    shortNames:
+      - ds
+    kind: DopplerSecret
+    plural: dopplersecrets
+    singular: dopplersecret
+---
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: doppler-controller
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: doppler-controller-service-account
+  namespace: doppler-controller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: doppler-controller-role
+rules:
+  - apiGroups: ['']
+    resources: ['secrets']
+    verbs: ['get', 'create', 'update', 'delete']
+  - apiGroups: ['apps']
+    resources: ['deployments']
+    verbs: ['patch']
+  - apiGroups: ['']
+    resources: ['namespaces']
+    verbs: ['get', 'watch', 'list']
+  - apiGroups: ['doppler.com']
+    resources: ['dopplersecrets']
+    verbs: ['get', 'list', 'update', 'delete']
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: doppler-controller-role-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: doppler-controller-role
+subjects:
+  - kind: ServiceAccount
+    name: doppler-controller-service-account
+    namespace: doppler-controller
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: doppler-controller
+  namespace: doppler-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: doppler-controller
+  template:
+    metadata:
+      labels:
+        app: doppler-controller
+    spec:
+      serviceAccountName: doppler-controller-service-account
+      containers:
+        - name: doppler-controller
+          image: dopplerhq/doppler-k8s-controller
+          imagePullPolicy: 'IfNotPresent'
+          env:
+            - name: SYNC_INTERVAL
+              value: '5000' # Secret sync interval (milliseconds)
+          resources:
+            requests:
+              memory: '250Mi'
+              cpu: '250m'
+            limits:
+              memory: '500Mi'
+              cpu: '500m'

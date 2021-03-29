@@ -1,11 +1,11 @@
-export default {
+const CRD = {
   apiVersion: 'apiextensions.k8s.io/v1',
   kind: 'CustomResourceDefinition',
   metadata: {
-    name: 'dopplersecrets.k8s.dashlabs.ai'
+    name: 'dopplersecrets.doppler.com'
   },
   spec: {
-    group: 'k8s.dashlabs.ai',
+    group: 'doppler.com',
     versions: [
       {
         name: 'v1',
@@ -18,17 +18,11 @@ export default {
               spec: {
                 type: 'object',
                 properties: {
-                  dopplerAPIKey: {
+                  serviceToken: {
                     type: 'string'
                   },
                   secretName: {
                     type: 'string'
-                  },
-                  updateDeployments: {
-                    type: 'array',
-                    items: {
-                      type: 'string'
-                    }
                   }
                 }
               }
@@ -44,4 +38,81 @@ export default {
       plural: 'dopplersecrets'
     }
   }
+}
+
+interface DopplerSecretManifest {
+  apiVersion: string
+  kind: string
+  metadata: {
+    name: string
+    namespace: string
+  }
+  spec: {
+    serviceToken: string
+    secretName: string
+  }
+}
+
+interface SecretManifest {
+  apiVersion: string
+  kind: string
+  metadata: {
+    name: string
+    annotations?: DopplerSecretAnnotations
+    labels: {
+      dopplerSecret: string
+      dopplerSecretName: string
+    }
+  }
+  type: string
+  data: Record<string, string>
+}
+
+interface DopplerSecretLog {
+  id: string
+  created: string
+}
+
+interface DopplerSecretAnnotations {
+  project: string
+  environment: string
+  config: string
+  logId: string
+  logCreated: string
+}
+
+const createKubeSecret = (
+  name: string,
+  dopplerSecretName: string,
+
+  secrets: { computed: string },
+  annotations: DopplerSecretAnnotations
+): SecretManifest => {
+  Object.keys(secrets).map((key) => {
+    secrets[key] = Buffer.from(secrets[key].computed).toString('base64')
+  })
+
+  return {
+    apiVersion: 'v1',
+    kind: 'Secret',
+    metadata: {
+      name,
+      labels: {
+        dopplerSecret: 'true',
+        dopplerSecretName
+      },
+      annotations: annotations
+    },
+    type: 'Opaque',
+    data: secrets
+  }
+}
+
+export {
+  CRD,
+  DopplerSecretManifest,
+  SecretManifest,
+  DopplerSecretLog,
+  DopplerSecretAnnotations,
+  createKubeSecret
 }

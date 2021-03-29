@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: doppler-secret-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: doppler-secret-test
+  template:
+    metadata:
+      labels:
+        app: doppler-secret-test
+    spec:
+      containers:
+        - name: doppler-secret-test
+          image: alpine
+          command: ['/bin/sh', '-c', 'printenv | sed "s;=.*;;" | sort && sleep 3600'] # Test by printing env var names
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: doppler-app-secret # Should match DopplerSecret spec.secretName
+          resources:
+            requests:
+              memory: '250Mi'
+              cpu: '250m'
+            limits:
+              memory: '500Mi'
+              cpu: '500m'
