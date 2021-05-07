@@ -1,73 +1,71 @@
-# Doppler Kubernetes Controller
+# Doppler Kubernetes Controller (experimental)
 
-A custom Kubernetes Controller which polls Doppler's secrets API to automatically create and update a native Kubernetes secret using the `spec.serviceToken` and `spec.secretName` fields from the `dopplersecrets.doppler.com` custom resource.
+Want the benefits of populating individual environment variables in a Pod from a single secret with Doppler doing the heavy lifting? Welcome to our (experimental) Doppler Kubernetes Controller.
 
-The Kubernetes secret created by the controller is just a regular secret with some Doppler specific labels and annoations. 
+All you need to do is deploy the controller:
 
-The secret is then used by a deployment to expose the secrets as environment variables using `envFrom:`.
+```bash
+kubectl apply -f manifests/doppler-crd-controller.yml
+```
 
-In essence, a `DopplerSecret` is just a mechanism to create a Kubernetes secret that is used by Deployments, saving the developer from habing to manually do that themselves.
+Create a custom `DopplerSecret` resource:
+
+```yaml
+apiVersion: 'doppler.com/v1'
+kind: DopplerSecret
+metadata:
+  name: my-app-secret
+  namespace: default
+spec:
+  serviceToken: 'dp.st.XXXX' # Doppler Service Token
+  secretName: doppler-app-secret # Name of Kubernetes Secret to create
+```
+
+Upon detecting a new `DopplerSecret`, the controller will automatically create a native Kubernetes secret that can be used by a deployment to expose the secrets as environment variables using the container `envFrom.secretRef.name` field:
+
+```yaml
+    containers:
+    - name: doppler-secret-test
+        image: alpine
+        command: ['/bin/sh', '-c', 'printenv | sed "s;=.*;;" | sort && sleep 3600'] # Test by printing env var names
+        imagePullPolicy: IfNotPresent
+        envFrom:
+        - secretRef:
+            name: doppler-app-secret # Matches DopplerSecret spec.secretName
+```
 
 ## Installation
 
-Apply the manifest in `manivests/crd.yml` by running:
+Deploy the controller by running:
 
 ```bash
-kubectl apply -f ./k8s/manifest.yml
+kubectl apply -f manifests/doppler-crd-controller.yml
 ```
 
-NOTE: The `crd.yml` defines an environment variables `SYNC_INTERVAL` which can be customized if required (default is once every 5 seconds). This is also the maximum delay between a `DopplerSecret` and the associated Kube secret being created.
-
-## Kubernetes dashboard on Docker for Desktop for viewing resources
-
-The Kubernetes dashboard is handy for inspecting the state of various resources such as the CRD itself and the logs of the Controller Pod so here is how you can access it if using Docker for Desktop:
-
-Install the Dashboard resources:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/master/aio/deploy/recommended.yaml
-```
-
-Run Kube proxy in order to reach the dashboard:
-
-```sh
-kubectl proxy
-```
-
-Use `kubectl` to get the token value from the Kube secret that was created when the dashboard was installed and copy it to your clipboard:
-
-```sh
-kubectl get secret $(kubectl get secret --namespace kubernetes-dashboard | grep kubernetes-dashboard-token | awk '{print $1}') --namespace ${KUBE_DASHBOARD_NAMESPACE} --template={{.data.token}} | base64 -D | pbcopy
-```
-
-Open the dashboard - http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/https:kubernetes-dashboard:/proxy/
-
-Paste in your token and you should be good to go!
+> NOTE: The `doppler-crd-controller.yml` spec defines a `SYNC_INTERVAL` (5 seconds by default) environment variable which is the maximum delay between when a `DopplerSecret` and the corresponding Kubernetes secret will be created.
 
 ## Usage
 
-NOTE: The `envsubst` binary is required and can be installed in macOS by running:
+You can quickly see the Controller in action by using the sample code in this repository.
+
+> NOTE: The `envsubst` binary is shown below as a way of avoiding hard-coding the Doppler service token in the `DopplerSecret` spec. It can be installed in macOS by running `brew install gettext`
+
+To create a `DopplerSecret`, first create a [Doppler Service Token](https://docs.doppler.com/docs/enclave-service-tokens) for a project in Doppler, then run the following to render the service token value into the spec sent to Kubernetes.
 
 ```sh
-brew install gettext
-```
-
----
-
-To create a `DopplerSecret`, run the following which will substitute the srevice token value and feed the stdout into the `kubectl`:
-
-```sh
-# Avoids hard-coding the service token in the manifest and it touching the file system
+# Avoids hard-coding the service token in the manifest. Secrets should never be unencrypted at rest!
 kubectl apply -f <(SERVICE_TOKEN="XXXXXX" envsubst < example/dopplersecret.yml)
 ```
 
-Now create the deployment which uses the secret created by the Controller. The `secretName` in the `DopplerSecret` spec is the name of the sercret the controller will create, which will be referenced by the `envFrom.secretRef.name` property.
+Then create a test deployment:
 
 ```sh
 kubectl apply -f example/deployment.yml
 ```
 
-Then in order to test that the deployment Pod had secrets supplied as env vars correctly, run the following which should be the names of all env vars:
+The `secretName` in the `DopplerSecret` is the name of the native secreted created by Doppler which should also be used as the value in the contianer's `envFrom.secretRef.name` field.
+
+To test the Deployment succesfully received secrets from Doppler, view the container logs, which for testing purposes, displays a list of enviornment variables in the container.
 
 ```sh
 kubectl logs -lapp=doppler-secret-test
@@ -75,25 +73,10 @@ kubectl logs -lapp=doppler-secret-test
 
 ### Clean up
 
-To remove all resources create, run:
+To remove the secrets and deployment created from the above commands, run:
 
 ```sh
 kubectl delete -f example/deployment.yml
 kubectl delete -f example/dopplersecret.yml
 kubectl delete secrets doppler-app-secret
 ```
-
-## Learnings
-
-- Revise deployment strategy. Need to have at least two nodes. Careful of single point of failure, then no secrets will be created.
-- Automatically triggering a new deployment when variables is change is a cool idea, but not sure everyone will want that.
-- What should happen if a service token is invalidated? Generally speaking, what's our approach to error handling.
-- Probably best written in Go
-- Max delay of `SYNC_INTERVAL` between `DopplerSecret` created and Kube secret created is the max delay that a deployment will be invalid if deployment is created when `DopplerSecret` is.
-
-## To Do
-
-- Tests!
-- Handle case when invalid service token is supplied initially, as secret will not be created
-- Use labels and selectors to have a `DopplerSecret` as the owner of the Kube secret
-- Add a grace period and a finalizer to `DopplerSecret` so the controller can detect deleted state, remove associated secret, then remove finalizer to have Kube clean it up
