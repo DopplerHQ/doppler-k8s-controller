@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: doppler-secret-test
   annotations:
-    dopplersecrets.doppler.com/reload: true'
+    dopplersecrets.doppler.com/reload: 'true'
 spec:
   replicas: 1
   selector:

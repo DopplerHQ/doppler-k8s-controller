@@ -87,7 +87,7 @@ spec:
       serviceAccountName: doppler-controller-service-account
       containers:
         - name: doppler-controller
-          image: dopplerhq/doppler-k8s-controller
+          image: dopplerhq/k8s-controller
           imagePullPolicy: 'IfNotPresent'
           env:
             - name: SYNC_INTERVAL
