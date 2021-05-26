@@ -1,5 +1,5 @@
 {
-  "name": "doppler-k8s-controller",  
+  "name": "doppler-k8s-controller",
   "version": "0.0.1-DEV",
   "description": "A custom Kubernetes Controller which polls Doppler's secrets API to automatically create and update a corresponding Kubernetes secret",
   "main": "index.js",
@@ -31,6 +31,7 @@
     "@typescript-eslint/eslint-plugin": "^4.14.1",
     "@typescript-eslint/parser": "^4.14.1",
     "eslint": "^7.18.0",
+    "nodemon": "^2.0.7",
     "prettier": "^2.2.1",
     "ts-node": "^9.1.1",
     "typescript": "^4.2.3"

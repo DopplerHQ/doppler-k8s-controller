@@ -14,6 +14,62 @@ client.addCustomResourceDefinition(CRD)
 
 const SYNC_INTERVAL = Number(process.env.SYNC_INTERVAL || 5000)
 
+const getDeploymentPatch = (secret: SecretManifest) => {
+  const annotations = {
+    'dopplersecrets.doppler.com/secretsupdate': `${secret.metadata.annotations.project}-${secret.metadata.annotations.config}-${secret.metadata.annotations.logId}`
+  }
+  return {
+    body: {
+      metadata: {
+        annotations
+      },
+      spec: {
+        template: {
+          metadata: {
+            annotations
+          }
+        }
+      }
+    }
+  }
+}
+
+const reloadDeployments = async (
+  dopplerSecret: DopplerSecretManifest,
+  secret: SecretManifest
+) => {
+  const deployments = await client.apis.apps.v1
+    .namespaces(dopplerSecret.metadata.namespace)
+    .deployments.get()
+  deployments.body.items.forEach((deployment) => {
+    const dopplerReload = Boolean(
+      deployment.metadata.annotations['dopplersecrets.doppler.com/reload']
+    )
+
+    if (dopplerReload) {
+      console.log(
+        '[info]:  reloadable deployment found - checking for updated secrets'
+      )
+      deployment.spec.template.spec.containers.forEach((container) => {
+        container.envFrom.forEach(async (envFrom) => {
+          if (envFrom.secretRef?.name === dopplerSecret.spec.secretName) {
+            console.log(
+              `[info]:  updated secret found: ${dopplerSecret.spec.secretName}`
+            )
+            await client.apis.apps.v1
+              .namespaces(dopplerSecret.metadata.namespace)
+              .deployments(deployment.metadata.name)
+              .patch(getDeploymentPatch(secret))
+            console.log(
+              `[info]:  deployment reload triggered for ${deployment.metadata.name}`
+            )
+          }
+        })
+      })
+    }
+  })
+}
+
 const upsertKubeSecret = async (
   dopplerSecret,
   dopplerSecretLog: DopplerSecretLog
@@ -24,6 +80,8 @@ const upsertKubeSecret = async (
       'api-key': dopplerSecret.spec.serviceToken
     }
   })
+
+  let secretUpdated = true
 
   const annotations: DopplerSecretAnnotations = {
     project: secretData.secrets.DOPPLER_PROJECT.computed,
@@ -64,6 +122,7 @@ const upsertKubeSecret = async (
       .namespaces(dopplerSecret.metadata.namespace)
       .secrets(dopplerSecret.spec.secretName)
       .put({ body: kubeSecret })
+    secretUpdated = true
     console.log(
       `[info]:  secret log ID changed from ${existingSecret.body.metadata.annotations.logId} to ${annotations.logId}`
     )
@@ -73,6 +132,11 @@ const upsertKubeSecret = async (
       .namespaces(dopplerSecret.metadata.namespace)
       .secrets.post({ body: kubeSecret })
     console.log(`[info]:  secret ${dopplerSecret.spec.secretName} created`)
+    secretUpdated = true
+  }
+
+  if (secretUpdated) {
+    reloadDeployments(dopplerSecret, kubeSecret)
   }
 }
 
