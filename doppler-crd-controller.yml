@@ -48,7 +48,7 @@ rules:
     verbs: ['get', 'create', 'update', 'delete']
   - apiGroups: ['apps']
     resources: ['deployments']
-    verbs: ['patch']
+    verbs: ['list', 'patch']
   - apiGroups: ['']
     resources: ['namespaces']
     verbs: ['get', 'watch', 'list']
