@@ -1,2 +1,5 @@
 build:
-	docker image build -t dopplerhq/doppler-k8s-controller .
+	docker image build -t dopplerhq/k8s-controller .
+
+tail-controller:
+	kubectl logs deployments/doppler-controller --namespace doppler-controller --follow

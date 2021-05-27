@@ -1,38 +1,6 @@
 # Doppler Kubernetes Controller (experimental)
 
-Want the benefits of populating individual environment variables in a Pod from a single secret with Doppler doing the heavy lifting? Welcome to our (experimental) Doppler Kubernetes Controller.
-
-All you need to do is deploy the controller:
-
-```bash
-kubectl apply -f manifests/doppler-crd-controller.yml
-```
-
-Create a custom `DopplerSecret` resource:
-
-```yaml
-apiVersion: 'doppler.com/v1'
-kind: DopplerSecret
-metadata:
-  name: my-app-secret
-  namespace: default
-spec:
-  serviceToken: 'dp.st.XXXX' # Doppler Service Token
-  secretName: doppler-app-secret # Name of Kubernetes Secret to create
-```
-
-Upon detecting a new `DopplerSecret`, the controller will automatically create a native Kubernetes secret that can be used by a deployment to expose the secrets as environment variables using the container `envFrom.secretRef.name` field:
-
-```yaml
-    containers:
-    - name: doppler-secret-test
-        image: alpine
-        command: ['/bin/sh', '-c', 'printenv | sed "s;=.*;;" | sort && sleep 3600'] # Test by printing env var names
-        imagePullPolicy: IfNotPresent
-        envFrom:
-        - secretRef:
-            name: doppler-app-secret # Matches DopplerSecret spec.secretName
-```
+The Doppler Kubernetes controller automatically syncs secret changes from Doppler to Kubernetes secrets with the ability to reload deployments on secret change.
 
 ## Installation
 
@@ -42,41 +10,93 @@ Deploy the controller by running:
 kubectl apply -f manifests/doppler-crd-controller.yml
 ```
 
-> NOTE: The `doppler-crd-controller.yml` spec defines a `SYNC_INTERVAL` (5 seconds by default) environment variable which is the maximum delay between when a `DopplerSecret` and the corresponding Kubernetes secret will be created.
+## Step 1. Creating the DopplerSecret Resoure
 
-## Usage
+The first step is to create a custom `DopplerSecret` resource that will be used by the controller to create a corresponding Kubernetes secret. The Kubernetes secret created contains a map of key value pairs.
 
-You can quickly see the Controller in action by using the sample code in this repository.
+Save the following to `doppler-secret.yml`:
 
-> NOTE: The `envsubst` binary is shown below as a way of avoiding hard-coding the Doppler service token in the `DopplerSecret` spec. It can be installed in macOS by running `brew install gettext`
-
-To create a `DopplerSecret`, first create a [Doppler Service Token](https://docs.doppler.com/docs/enclave-service-tokens) for a project in Doppler, then run the following to render the service token value into the spec sent to Kubernetes.
-
-```sh
-# Avoids hard-coding the service token in the manifest. Secrets should never be unencrypted at rest!
-kubectl apply -f <(SERVICE_TOKEN="XXXXXX" envsubst < example/dopplersecret.yml)
+```yaml
+apiVersion: 'doppler.com/v1'
+kind: DopplerSecret
+metadata:
+  name: doppler-secret
+  namespace: default
+spec:
+  serviceToken: 'dp.st.dev.Ix5TqVXsdOHq4FByFQbMadT3rotEHVZQ7v04NSbWT1I' # Doppler Service Token for config to sync
+  secretName: app-secret # Name of Kubernetes Secret controller will create
 ```
 
-Then create a test deployment:
+Create an example resource:
 
 ```sh
-kubectl apply -f example/deployment.yml
+kubectl apply -f doppler-secret.yml
 ```
 
-The `secretName` in the `DopplerSecret` is the name of the native secreted created by Doppler which should also be used as the value in the contianer's `envFrom.secretRef.name` field.
-
-To test the Deployment succesfully received secrets from Doppler, view the container logs, which for testing purposes, displays a list of enviornment variables in the container.
+Check that the Kubenertes secret has been created by the controller:
 
 ```sh
-kubectl logs -lapp=doppler-secret-test
+kubectl describe secrets --selector=dopplerSecret=true
 ```
 
-### Clean up
+## Step 2. Configuring a Deployment
 
-To remove the secrets and deployment created from the above commands, run:
+As the controller creates a Kuberentes secret containing your secrets from Doppler, simply use the value for `secretName` used in the `DopplerSecret` resource.
+
+If you'd like to enable the auto-reload functionality, then just add a single annotation to your deployment. 
+
+To test using the example `DopplerSecret` from above, save the following to `doppler-deployment.yml`:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: doppler-secret-test
+  annotations:
+    dopplersecrets.doppler.com/reload: 'true' # Add for auto-reloads
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: doppler-secret-test
+  template:
+    metadata:
+      labels:
+        app: doppler-secret-test
+    spec:      
+      containers:
+        - name: doppler-secret-test
+          image: alpine
+          command: ['/bin/sh', '-c', 'printenv && sleep 3600'] # Test by printing env var names
+          envFrom: # Only envFrom is currently supported for auto-reloads
+            - secretRef:
+                name: app-secret # Should match DopplerSecret.spec.secretName          
+```
+
+Create the deployment:
 
 ```sh
-kubectl delete -f example/deployment.yml
-kubectl delete -f example/dopplersecret.yml
-kubectl delete secrets doppler-app-secret
+kubectl apply -f doppler-deployment.yml
+```
+
+Once the Deployment has completed, you can view the output of environment variables inside the example container by running:
+
+```sh
+kubectl logs -lapp=doppler-secret-test 
+```
+
+## Cleaning up example resources
+
+To clean up the example resources, run:
+
+```sh
+kubectl delete deployments/doppler-secret-test
+kubectl delete dopplersecrets.doppler.com/doppler-secret
+kubectl delete secrets/app-secret
+```
+
+To remove the controller and associated resources, run:
+
+```sh
+kubectl delete -f manifests/doppler-crd-controller.yml
 ```

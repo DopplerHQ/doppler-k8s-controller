@@ -17,11 +17,11 @@ spec:
       containers:
         - name: doppler-secret-test
           image: alpine
-          command: ['/bin/sh', '-c', 'printenv && sleep 3600'] # Test by printing env var names          
-          imagePullPolicy: IfNotPresent
+          command: ['/bin/sh', '-c', 'printenv && sleep 3600'] # Test by printing env var names
+          imagePullPolicy: Always
           envFrom:
             - secretRef:
-                name: doppler-app-secret # Should match DopplerSecret spec.secretName
+                name: app-secret # Should match DopplerSecret.spec.secretName
           resources:
             requests:
               memory: '250Mi'
@@ -29,4 +29,3 @@ spec:
             limits:
               memory: '500Mi'
               cpu: '500m'
-      terminationGracePeriodSeconds: 1 # Testing purposes speed up the redepolyment process

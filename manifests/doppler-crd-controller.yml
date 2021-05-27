@@ -88,7 +88,7 @@ spec:
       containers:
         - name: doppler-controller
           image: dopplerhq/k8s-controller
-          imagePullPolicy: 'IfNotPresent'
+          imagePullPolicy: Always
           env:
             - name: SYNC_INTERVAL
               value: '5000' # Secret sync interval (milliseconds)

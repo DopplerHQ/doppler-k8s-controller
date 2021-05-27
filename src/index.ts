@@ -14,30 +14,40 @@ client.addCustomResourceDefinition(CRD)
 
 const SYNC_INTERVAL = Number(process.env.SYNC_INTERVAL || 5000)
 
-const getDeploymentPatch = (secret: SecretManifest) => {
+const triggerDeployment = async (
+  deployment: any,
+  namespace: string,
+  secret: SecretManifest
+) => {
   const annotations = {
     'dopplersecrets.doppler.com/secretsupdate': `${secret.metadata.annotations.project}-${secret.metadata.annotations.config}-${secret.metadata.annotations.logId}`
   }
-  return {
-    body: {
-      metadata: {
-        annotations
-      },
-      spec: {
-        template: {
-          metadata: {
-            annotations
+  await client.apis.apps.v1
+    .namespaces(namespace)
+    .deployments(deployment)
+    .patch({
+      body: {
+        metadata: {
+          annotations
+        },
+        spec: {
+          template: {
+            metadata: {
+              annotations
+            }
           }
         }
       }
-    }
-  }
+    })
 }
 
-const reloadDeployments = async (
+const checkDeployments = async (
   dopplerSecret: DopplerSecretManifest,
   secret: SecretManifest
 ) => {
+  console.log(
+    `[info]:  checking for reloadable deployments using secret '${dopplerSecret.spec.secretName}'`
+  )
   const deployments = await client.apis.apps.v1
     .namespaces(dopplerSecret.metadata.namespace)
     .deployments.get()
@@ -48,20 +58,21 @@ const reloadDeployments = async (
 
     if (dopplerReload) {
       console.log(
-        '[info]:  reloadable deployment found - checking for updated secrets'
+        `[info]:  reloadable deployment (${deployment.metadata.name}) found - checking for updated secrets`
       )
       deployment.spec.template.spec.containers.forEach((container) => {
         container.envFrom.forEach(async (envFrom) => {
           if (envFrom.secretRef?.name === dopplerSecret.spec.secretName) {
             console.log(
-              `[info]:  updated secret found: ${dopplerSecret.spec.secretName}`
+              `[info]:  updated secret (${dopplerSecret.spec.secretName}) found in ${container.name}`
             )
-            await client.apis.apps.v1
-              .namespaces(dopplerSecret.metadata.namespace)
-              .deployments(deployment.metadata.name)
-              .patch(getDeploymentPatch(secret))
             console.log(
-              `[info]:  deployment reload triggered for ${deployment.metadata.name}`
+              `[info]:  triggering redeploy for ${deployment.metadata.name}`
+            )
+            triggerDeployment(
+              deployment.metadata.name,
+              deployment.metadata.namespace,
+              secret
             )
           }
         })
@@ -81,7 +92,7 @@ const upsertKubeSecret = async (
     }
   })
 
-  let secretUpdated = true
+  let secretUpdated = false
 
   const annotations: DopplerSecretAnnotations = {
     project: secretData.secrets.DOPPLER_PROJECT.computed,
@@ -92,7 +103,7 @@ const upsertKubeSecret = async (
   }
 
   console.log(
-    `[info]:  fetched latest secrets for ${annotations.project} => ${annotations.config}`
+    `[info]:  secrets fetched for ${annotations.project} => ${annotations.config}`
   )
 
   const kubeSecret: SecretManifest = createKubeSecret(
@@ -111,7 +122,7 @@ const upsertKubeSecret = async (
 
     if (annotations.logId === existingSecret.body.metadata.annotations?.logId) {
       console.log(
-        `[info]:  skipping sync for secret ${existingSecret.body.metadata.name} as logId matches latest (${annotations.logId} - ${annotations.logCreated})`
+        `[info]:  secret ${kubeSecret.metadata.name} unchanged`
       )
       return
     }
@@ -136,7 +147,7 @@ const upsertKubeSecret = async (
   }
 
   if (secretUpdated) {
-    reloadDeployments(dopplerSecret, kubeSecret)
+    checkDeployments(dopplerSecret, kubeSecret)
   }
 }
 
@@ -160,7 +171,7 @@ const secretsSync = async () => {
     }
 
     console.log(
-      `[info]:  starting sync in namespace ${namespace.metadata.name} - ${dopplerSecrets.length} secrets found\n`
+      `[info]:  starting sync in namespace '${namespace.metadata.name}' - ${dopplerSecrets.length} secrets found\n`
     )
 
     // Iterate through every DopplerSecret in namespace
