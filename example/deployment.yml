@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: doppler-secret-test
+  name: doppler-secrets
   annotations:
     dopplersecrets.doppler.com/reload: 'true'
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
-      app: doppler-secret-test
+      app: doppler-secrets
   template:
     metadata:
       labels:
-        app: doppler-secret-test
+        app: doppler-secrets
     spec:      
       containers:
-        - name: doppler-secret-test
+        - name: doppler-secrets
           image: alpine
-          command: ['/bin/sh', '-c', 'printenv && sleep 3600'] # Test by printing env var names
+          command: ['/bin/sh', '-c', 'printenv && sleep 3600'] # Test by printing env var names          
           imagePullPolicy: Always
           envFrom:
             - secretRef:
@@ -29,3 +29,4 @@ spec:
             limits:
               memory: '500Mi'
               cpu: '500m'
+      terminationGracePeriodSeconds: 0 # Testing purposes speed up the redepolyment process

@@ -7,7 +7,7 @@ The Doppler Kubernetes controller automatically syncs secret changes from Dopple
 Deploy the controller by running:
 
 ```bash
-kubectl apply -f manifests/doppler-crd-controller.yml
+kubectl apply -f doppler-crd-controller.yml
 ```
 
 ## Step 1. Creating the DopplerSecret Resoure
@@ -21,7 +21,6 @@ apiVersion: 'doppler.com/v1'
 kind: DopplerSecret
 metadata:
   name: doppler-secret
-  namespace: default
 spec:
   serviceToken: 'dp.st.dev.Ix5TqVXsdOHq4FByFQbMadT3rotEHVZQ7v04NSbWT1I' # Doppler Service Token for config to sync
   secretName: app-secret # Name of Kubernetes Secret controller will create
@@ -51,21 +50,21 @@ To test using the example `DopplerSecret` from above, save the following to `dop
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: doppler-secret-test
+  name: doppler-secrets
   annotations:
     dopplersecrets.doppler.com/reload: 'true' # Add for auto-reloads
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: doppler-secret-test
+      app: doppler-secrets
   template:
     metadata:
       labels:
-        app: doppler-secret-test
+        app: doppler-secrets
     spec:      
       containers:
-        - name: doppler-secret-test
+        - name: doppler-secrets
           image: alpine
           command: ['/bin/sh', '-c', 'printenv && sleep 3600'] # Test by printing env var names
           envFrom: # Only envFrom is currently supported for auto-reloads
@@ -82,7 +81,25 @@ kubectl apply -f doppler-deployment.yml
 Once the Deployment has completed, you can view the output of environment variables inside the example container by running:
 
 ```sh
-kubectl logs -lapp=doppler-secret-test 
+kubectl logs -lapp=doppler-secrets 
+```
+
+# Debugging and Troubleshooting
+
+This repo contains a couple of handy scripts that give greater visibility into the secret and deployment updating process.
+
+To watch a Doppler owned secret for changes:
+
+```sh
+# Replace `app-secrets` with the name of your Doppler created secret name
+watch ./bin/get-secret.sh app-secrets
+```
+
+To watch the logs of a running Pod:
+
+```sh
+# Replace `app=doppler-secrets` with your deployment label selector 
+watch ./bin/pod-logs.sh app=doppler-secrets
 ```
 
 ## Cleaning up example resources
@@ -90,7 +107,7 @@ kubectl logs -lapp=doppler-secret-test
 To clean up the example resources, run:
 
 ```sh
-kubectl delete deployments/doppler-secret-test
+kubectl delete deployments/doppler-secrets
 kubectl delete dopplersecrets.doppler.com/doppler-secret
 kubectl delete secrets/app-secret
 ```
@@ -98,5 +115,5 @@ kubectl delete secrets/app-secret
 To remove the controller and associated resources, run:
 
 ```sh
-kubectl delete -f manifests/doppler-crd-controller.yml
+kubectl delete -f doppler-crd-controller.yml
 ```

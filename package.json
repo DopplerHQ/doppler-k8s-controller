@@ -1,15 +1,16 @@
 {
   "name": "doppler-k8s-controller",
-  "version": "0.0.1-DEV",
+  "version": "0.0.1",
   "description": "A custom Kubernetes Controller which polls Doppler's secrets API to automatically create and update a corresponding Kubernetes secret",
   "main": "index.js",
   "scripts": {
     "dev": "nodemon --ignore '*.json' --exec ts-node src/index.ts",
     "build": "rm -rf dist && tsc --build tsconfig.json",
+    "build-docker": "docker image build -t dopplerhq/k8s-controller:latest .",
     "start": "node dist/index.js",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx --fix && prettier --write .",
     "pretty": "prettier --write .",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "tail-controller": "kubectl logs deployments/doppler-controller --namespace doppler-controller --follow --tail 20"    
   },
   "repository": {
     "type": "git",

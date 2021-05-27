@@ -15,7 +15,7 @@ client.addCustomResourceDefinition(CRD)
 const SYNC_INTERVAL = Number(process.env.SYNC_INTERVAL || 5000)
 
 const triggerDeployment = async (
-  deployment: any,
+  deployment: string,
   namespace: string,
   secret: SecretManifest
 ) => {
@@ -60,6 +60,26 @@ const checkDeployments = async (
       console.log(
         `[info]:  reloadable deployment (${deployment.metadata.name}) found - checking for updated secrets`
       )
+      // Check containers
+      deployment.spec.template.spec.containers.forEach((container) => {
+        container.envFrom.forEach(async (envFrom) => {
+          if (envFrom.secretRef?.name === dopplerSecret.spec.secretName) {
+            console.log(
+              `[info]:  updated secret (${dopplerSecret.spec.secretName}) found in ${container.name}`
+            )
+            console.log(
+              `[info]:  triggering redeploy for ${deployment.metadata.name}`
+            )
+            triggerDeployment(
+              deployment.metadata.name,
+              deployment.metadata.namespace,
+              secret
+            )
+          }
+        })
+      })
+
+      // Check volumes
       deployment.spec.template.spec.containers.forEach((container) => {
         container.envFrom.forEach(async (envFrom) => {
           if (envFrom.secretRef?.name === dopplerSecret.spec.secretName) {
@@ -121,9 +141,7 @@ const upsertKubeSecret = async (
       .get()
 
     if (annotations.logId === existingSecret.body.metadata.annotations?.logId) {
-      console.log(
-        `[info]:  secret ${kubeSecret.metadata.name} unchanged`
-      )
+      console.log(`[info]:  secret ${kubeSecret.metadata.name} unchanged`)
       return
     }
 
