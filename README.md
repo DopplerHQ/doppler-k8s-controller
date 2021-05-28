@@ -66,7 +66,7 @@ spec:
       containers:
         - name: doppler-secrets
           image: alpine
-          command: ['/bin/sh', '-c', 'printenv && sleep 3600'] # Test by printing env var names
+          command: ['/bin/sh', '-c', 'apk add --no-cache tini > /dev/null 2>&1 && printenv | grep -v KUBERNETES_ && tini -s tail -f /dev/null'] # Test by printing env var names
           envFrom: # Only envFrom is currently supported for auto-reloads
             - secretRef:
                 name: app-secret # Should match DopplerSecret.spec.secretName          
