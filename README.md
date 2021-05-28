@@ -1,119 +1,138 @@
 # Doppler Kubernetes Controller (experimental)
 
-The Doppler Kubernetes controller automatically syncs secret changes from Doppler to Kubernetes secrets with the ability to reload deployments on secret change.
+Automatically sync secrets from Doppler to Kubernetes with auto-reload of Deployments when secrets change.
 
-## Installation
+![Doppler Kubernetes Controller Diagram](https://user-images.githubusercontent.com/133014/119946348-e2465280-bfd9-11eb-8d72-34afebbb538c.png)
+
+## Step 1. Deploying the Doppler Controller
 
 Deploy the controller by running:
 
 ```bash
 kubectl apply -f doppler-crd-controller.yml
+kubectl rollout status -w deployment/doppler-controller --namespace doppler-controller
 ```
 
-## Step 1. Creating the DopplerSecret Resoure
+## Step 2. Creating a DopplerSecret
 
-The first step is to create a custom `DopplerSecret` resource that will be used by the controller to create a corresponding Kubernetes secret. The Kubernetes secret created contains a map of key value pairs.
+The first step is to create a custom `DopplerSecret` resource, consisting of a name and a Doppler Service Token.
 
-Save the following to `doppler-secret.yml`:
+Upon `DopplerSecret` creation, the controller creates an associated Kubernetes secret, populating it with the secrets fetched from the Doppler API in Key-Value format.
+
+To follow along with an example, update the code below with a real Service Token and save as `doppler-secret.yml`:
 
 ```yaml
-apiVersion: 'doppler.com/v1'
-kind: DopplerSecret
+apiVersion: doppler.com/v1
+kind: DopplerSecret 
 metadata:
-  name: doppler-secret
+  name: dopplersecret-test # DopplerSecret resource name
 spec:
-  serviceToken: 'dp.st.dev.Ix5TqVXsdOHq4FByFQbMadT3rotEHVZQ7v04NSbWT1I' # Doppler Service Token for config to sync
-  secretName: app-secret # Name of Kubernetes Secret controller will create
+  serviceToken: dp.st.dev.XXXX # Change to your Doppler Service Token
+  secretName: doppler-test-secret # Kubernetes Secret name
 ```
 
-Create an example resource:
+Then create the `DopplerSecret`:
 
 ```sh
 kubectl apply -f doppler-secret.yml
 ```
 
-Check that the Kubenertes secret has been created by the controller:
+Check that the associated Kubernetes secret has been created:
 
 ```sh
+# List all Kubernetes secrets created by the Doppler controller
 kubectl describe secrets --selector=dopplerSecret=true
+
+# Or to view secret values
+./bin/get-secret.sh doppler-test-secret
 ```
 
-## Step 2. Configuring a Deployment
+The controller continuously watches for secret updates from Doppler and when detected, automatically and instantly updates the associated secret.
 
-As the controller creates a Kuberentes secret containing your secrets from Doppler, simply use the value for `secretName` used in the `DopplerSecret` resource.
+Next, we'll cover how to configure a deployment to use the Kubernetes secret and enable auto-reloading for Deployments.
 
-If you'd like to enable the auto-reload functionality, then just add a single annotation to your deployment. 
+## Step 3. Configuring a Deployment
 
-To test using the example `DopplerSecret` from above, save the following to `doppler-deployment.yml`:
+To use the secret created by the Controller, we'll use the `envFrom` field to populate a container's environment variables using the secrets's Key-Value pairs:
+
+```yaml
+envFrom:
+  - secretRef:
+    name: mysecret # Matches the DopplerSecret name
+```
+
+Adding automatic and instant reloading of a deployment requires just a single annotation on the Deployment:
+
+```yaml
+annotations:
+  dopplersecrets.doppler.com/reload: 'true'
+```
+
+Let's look at a complete example that uses previously created `DopplerSecret`. Save the below as `doppler-deployment.yml`:
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: doppler-secrets
+  name: doppler-test-deployment
   annotations:
-    dopplersecrets.doppler.com/reload: 'true' # Add for auto-reloads
+    dopplersecrets.doppler.com/reload: 'true'
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
-      app: doppler-secrets
+      app: doppler-test
   template:
     metadata:
       labels:
-        app: doppler-secrets
+        app: doppler-test
     spec:      
       containers:
-        - name: doppler-secrets
+        - name: doppler-test
           image: alpine
-          command: ['/bin/sh', '-c', 'apk add --no-cache tini > /dev/null 2>&1 && printenv | grep -v KUBERNETES_ && tini -s tail -f /dev/null'] # Test by printing env var names
-          envFrom: # Only envFrom is currently supported for auto-reloads
+          command: ['/bin/sh', '-c', 'apk add --no-cache tini > /dev/null 2>&1 && printenv | grep -v KUBERNETES_ && tini -s tail -f /dev/null'] # Test by printing env var names          
+          imagePullPolicy: Always
+          envFrom:
             - secretRef:
-                name: app-secret # Should match DopplerSecret.spec.secretName          
+                name: doppler-test-secret # Should match DopplerSecret.spec.secretName
+          resources:
+            requests:
+              memory: '250Mi'
+              cpu: '250m'
+            limits:
+              memory: '500Mi'
+              cpu: '500m'      
 ```
 
 Create the deployment:
 
 ```sh
 kubectl apply -f doppler-deployment.yml
+kubectl rollout status -w deployment/doppler-test-deployment
 ```
 
-Once the Deployment has completed, you can view the output of environment variables inside the example container by running:
+Once the Deployment has completed, you can view the logs of the test container, which lists the environment variables (minus those with the `KUBERNETES_` prefix):
 
 ```sh
-kubectl logs -lapp=doppler-secrets 
+kubectl logs -lapp=doppler-test 
 ```
 
 # Debugging and Troubleshooting
 
+> NOTE: The `watch` binary is used by the below commands and can be installed on macOS using homebrew with `brew install watch`.
+
 This repo contains a couple of handy scripts that give greater visibility into the secret and deployment updating process.
 
-To watch a Doppler owned secret for changes:
+To watch a Doppler owned secret for updates:
 
 ```sh
-# Replace `app-secrets` with the name of your Doppler created secret name
-watch ./bin/get-secret.sh app-secrets
+# Replace `doppler-test-secret` with your secret name
+./bin/get-secret.sh doppler-test-secret
 ```
 
 To watch the logs of a running Pod:
 
 ```sh
-# Replace `app=doppler-secrets` with your deployment label selector 
-watch ./bin/pod-logs.sh app=doppler-secrets
-```
-
-## Cleaning up example resources
-
-To clean up the example resources, run:
-
-```sh
-kubectl delete deployments/doppler-secrets
-kubectl delete dopplersecrets.doppler.com/doppler-secret
-kubectl delete secrets/app-secret
-```
-
-To remove the controller and associated resources, run:
-
-```sh
-kubectl delete -f doppler-crd-controller.yml
+# Replace `app=doppler-test` with your deployment label selector
+watch ./bin/pod-logs.sh app=doppler-test
 ```

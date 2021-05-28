@@ -1,27 +1,27 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: doppler-secrets
+  name: doppler-test-deployment
   annotations:
     dopplersecrets.doppler.com/reload: 'true'
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: doppler-secrets
+      app: doppler-test
   template:
     metadata:
       labels:
-        app: doppler-secrets
+        app: doppler-test
     spec:      
       containers:
-        - name: doppler-secrets
+        - name: doppler-test
           image: alpine
           command: ['/bin/sh', '-c', 'apk add --no-cache tini > /dev/null 2>&1 && printenv | grep -v KUBERNETES_ && tini -s tail -f /dev/null'] # Test by printing env var names          
           imagePullPolicy: Always
           envFrom:
             - secretRef:
-                name: app-secret # Should match DopplerSecret.spec.secretName
+                name: doppler-test-secret # Should match DopplerSecret.spec.secretName
           resources:
             requests:
               memory: '250Mi'
@@ -29,4 +29,3 @@ spec:
             limits:
               memory: '500Mi'
               cpu: '500m'
-      terminationGracePeriodSeconds: 0 # Testing purposes speed up the redepolyment process

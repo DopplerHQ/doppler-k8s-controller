@@ -78,25 +78,6 @@ const checkDeployments = async (
           }
         })
       })
-
-      // Check volumes
-      deployment.spec.template.spec.containers.forEach((container) => {
-        container.envFrom.forEach(async (envFrom) => {
-          if (envFrom.secretRef?.name === dopplerSecret.spec.secretName) {
-            console.log(
-              `[info]:  updated secret (${dopplerSecret.spec.secretName}) found in ${container.name}`
-            )
-            console.log(
-              `[info]:  triggering redeploy for ${deployment.metadata.name}`
-            )
-            triggerDeployment(
-              deployment.metadata.name,
-              deployment.metadata.namespace,
-              secret
-            )
-          }
-        })
-      })
     }
   })
 }
@@ -214,7 +195,7 @@ const secretsSync = async () => {
         upsertKubeSecret(dopplerSecret, latestSecretLog)
       } catch (error) {
         console.log(
-          `[error]: unable to fetch secret logs from Doppler API for ${dopplerSecret.metadata.name} - ${error.response.data.messages}`
+          `[error]: failed to fetch secrets for ${dopplerSecret.metadata.name}: ${error.response.data.messages}`
         )
       }
     })
