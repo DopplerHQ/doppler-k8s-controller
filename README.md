@@ -3,7 +3,7 @@
 
 # Doppler Kubernetes Controller (experimental)
 
-Automatically sync secrets from Doppler to Kubernetes with auto-reload of Deployments when secrets change.
+Automatically sync secrets from Doppler to Kubernetes with auto-reload of Deployments when secrets change. Watch a quick [6 min video](https://vimeo.com/556141085) to see it in action.
 
 ![Doppler Kubernetes Controller Diagram](https://user-images.githubusercontent.com/133014/119946348-e2465280-bfd9-11eb-8d72-34afebbb538c.png)
 
