@@ -1,3 +1,6 @@
+| :information_source: This project has been replaced with the [Doppler Kubernetes Operator](https://github.com/DopplerHQ/kubernetes-operator).
+| ---
+
 # Doppler Kubernetes Controller (experimental)
 
 Automatically sync secrets from Doppler to Kubernetes with auto-reload of Deployments when secrets change.
